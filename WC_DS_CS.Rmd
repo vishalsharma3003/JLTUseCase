@@ -33,8 +33,7 @@ library(tidyverse)
 ```
 
 ```{r initials}
-setwd("D:\\DS\\JLT")
-wb2<- "WC_Data_Science Case Study.csv"
+wb2<- "https://raw.githubusercontent.com/vishalsharma3003/JLTUseCase/master/WC_Data_Science%20Case%20Study.csv"
 compensations <- read.csv(wb2)
 compensations_bkp <- read.csv(wb2)
 head(compensations)
@@ -237,7 +236,7 @@ plot(model)
 # Area wise analysis can also be done.
 
 # As the accident state has postal codes of US, I checked for the list of US postal codes
-USStateCodes <- read.csv("US State Codes.csv")
+USStateCodes <- read.csv("https://raw.githubusercontent.com/vishalsharma3003/JLTUseCase/master/US%20State%20Codes.csv")
 head(USStateCodes)
 ```
 
