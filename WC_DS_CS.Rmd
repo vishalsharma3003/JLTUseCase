@@ -1,0 +1,486 @@
+---
+title: "Data Science Case Study"
+author: "Vishal Sharma"
+date: "September 15, 2019"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Synopsis
+
+The risk manager from a consultancy wants to analyse  **Workers Compensation risk** in the United States. He has hired me as a consultant to identify the key factors of high cost  workers compensation claim across the US. He provides historical loss experience data.
+
+There are 3 objectives to be met in this document.
+
+### Objective 1:
+Explore the claims experience (using graphs/plots), Build a model to predict high cost workers compnesation claim and highlight the key drivers of high cost claims. 
+
+### Objective 2:
+Prove that litigation is the key driver of high cost claims using statistical analysis and tests. Predict if the case will go for litigation. Hence drive the objective 1.
+
+### Objective 3:
+Use NLP techniques to engineer features from description (stated in hint below)
+
+Let us start with **objective 1**
+
+```{r tidyv, results="hide", message=FALSE, warning=FALSE}
+library(tidyverse)
+```
+
+```{r initials}
+setwd("D:\\DS\\JLT")
+wb2<- "WC_Data_Science Case Study.csv"
+compensations <- read.csv(wb2)
+compensations_bkp <- read.csv(wb2)
+head(compensations)
+
+```
+
+### Data Cleaning
+```{r cleaning}
+#1. Missing values
+table(is.na(compensations$Date.of.Birth))
+# Blank values instead of NA so reload with NA, Commas and hyphen in claim amount
+# Now read with NA
+compensationsWithNA <- read.csv(wb2,header = T, na.strings = c("","NA"))
+# Remove the commans and hyphen from claim amount
+compensationsWithNA$Claim.Cost <- as.numeric(gsub("[,-]","",compensationsWithNA$Claim.Cost))
+# Backup for compensations with NA
+compensationsWithNA_bkp <- compensationsWithNA
+
+head(compensationsWithNA) 
+# Now the values with NA and no hyphen or comma in cost
+table(is.na(compensationsWithNA$Date.of.Birth))
+
+na_count <-sapply(compensationsWithNA, function(y) sum(length(which(is.na(y)))))
+na_count <- data.frame(na_count)
+na_count
+# While I check the data frame na_count then it is noticed that some of the values have exactly 9 NA's which is bit odd
+# so I checked the lower and upper values
+head(compensationsWithNA)
+tail(compensationsWithNA)
+# So it seems like the ending values are nothing just NAs so let's remove last 9 records from table
+n<-dim(compensationsWithNA)[1]
+compensationsWithNA<-compensationsWithNA[1:(n-9),]
+
+# Recheck the na's
+na_count <-sapply(compensationsWithNA, function(y) sum(length(which(is.na(y)))))
+na_count <- data.frame(na_count)
+na_count$percent <- (na_count$na_count/n)*100
+na_count
+# NA can be removed by replacing with following values:
+# 1. Mean
+# 2. Median
+# 3. Most probably Bayesian value
+# 4. k-nearest neighbour
+
+table(is.na(compensationsWithNA$Claim.Cost),compensationsWithNA$High.Cost)
+# The NA's in claim cost are all lower in value as the high cost for them is false
+
+mean(compensationsWithNA$Claim.Cost, na.rm = T)
+
+# Let's replace all the cost values with mean 
+compensationsWithNA$Claim.Cost[is.na(compensationsWithNA$Claim.Cost)] <- mean(compensationsWithNA$Claim.Cost, na.rm = T)
+
+# Backup of data till now
+compensationsWithNA_bkp2 <- compensationsWithNA
+#compensationsWithNA <- compensationsWithNA_bkp2
+
+unique(compensationsWithNA$Litigation)
+# The values in variable Litigatation are No, NO, Yes, YES
+compensationsWithNA$Litigation <- toupper(compensationsWithNA$Litigation)
+```
+
+```{r plotsLib, results="hide", message=FALSE, warning=FALSE}
+library(ggplot2)
+library(plotly)
+```
+
+```{r plots}
+gg <- ggplot(data=compensations, width=10) +
+  geom_bar(mapping =aes(x=compensations$Carrier),
+           position = "dodge")
+ggplotly(gg)
+
+gg <- ggplot(data=compensationsWithNA) +
+  geom_bar(mapping =aes(x=compensationsWithNA$Litigation, fill=compensationsWithNA$Sector.Industry),
+           position = "dodge")
+ggplotly(gg)
+
+# The graph says that for Communication services, Aviation and Consumer disc, the litigation is blank always
+# but considering the % of NO, it can be filled as NO for all.
+table(compensationsWithNA$Litigation)
+table(compensationsWithNA$Litigation,compensationsWithNA$High.Cost)
+gg <- ggplot(data=compensationsWithNA) +
+  geom_bar(mapping =aes(x=compensationsWithNA$High.Cost, fill=compensationsWithNA$Litigation),
+           position = "dodge")
+ggplotly(gg)
+
+# Let's replace all missing values in litigation as no
+compensationsWithNA$Litigation[is.na(compensationsWithNA$Litigation)] <- 'NO'
+
+# Carrier has 86% NA's which we can ignore
+# Occupation has 71% NA's which we can ignore
+# DOB has 75% NA's but can be ignored
+# Closed date can be empty as ticket status can still be open
+# Accident state has 15% NA but as of now we can ignore
+
+# Let's check for outliers in claim cost
+gg <- ggplot(data = compensationsWithNA, aes(x = compensationsWithNA$Sector.Industry, y = Claim.Cost)) + 
+  geom_boxplot() +
+  coord_cartesian(ylim = c(min(compensationsWithNA$Claim.Cost),max(compensationsWithNA$Claim.Cost)))
+ggplotly(gg)
+
+# There can be outliers but the max value 1.2 million can be reached for the compensation claim but to consider it as outlier more information will be required.
+# Moreover, this is bit tricky as for higher values there were no litigations
+# As of now we ignore the outliers
+
+# As there are not many variables then we don't need to do PCA or SVD for dimensionality reduction
+
+# Here we have more categorical variables and less continuous variables, so we do the 
+# bivariate analysis using two way table
+# 1. Litigation vs High Cost
+gg <- ggplot(data=compensationsWithNA) +
+  geom_bar(mapping =aes(x=compensationsWithNA$High.Cost, fill=compensationsWithNA$Litigation),
+           position = "dodge")
+ggplotly(gg)
+
+prop.test(table(compensationsWithNA$Litigation, compensationsWithNA$High.Cost))
+
+# 2. Loss Type vs High Cost
+gg <- ggplot(data=compensationsWithNA) +
+  geom_bar(mapping =aes(x=compensationsWithNA$High.Cost, fill=compensationsWithNA$Loss.Type),
+           position = "dodge")
+ggplotly(gg)
+prop.test(table(compensationsWithNA$Loss.Type, compensationsWithNA$High.Cost))
+
+# 3. Accident State vs High Cost
+gg <- ggplot(data=compensationsWithNA) +
+  geom_bar(mapping =aes(x=compensationsWithNA$High.Cost, fill=compensationsWithNA$Accident.State),
+           position = "dodge")
+ggplotly(gg)
+prop.test(table(compensationsWithNA$Accident.State, compensationsWithNA$High.Cost))
+
+# 4. Sectory/Industry vs High Cost
+gg <- ggplot(data=compensationsWithNA) +
+  geom_bar(mapping =aes(x=compensationsWithNA$High.Cost, fill=compensationsWithNA$Sector.Industry),
+           position = "dodge")
+ggplotly(gg)
+prop.test(table(compensationsWithNA$Sector.Industry, compensationsWithNA$High.Cost))
+
+# create backup again
+compensationsWithNA_bkp3 <- compensationsWithNA
+# compensationsWithNA_bkp3 -> compensationsWithNA
+compensationsWithNA <- compensationsWithNA[,c(2,5,11,14,16)]
+```
+### Sampling
+```{r sampling}
+# sample the data for modelling
+# 75% of the sample size
+smp_size <- floor(0.75 * nrow(compensationsWithNA))
+
+# set the seed to make your partition reproducible
+set.seed(123)
+train_ind <- sample(seq_len(nrow(compensationsWithNA)), size = smp_size)
+
+train <- compensationsWithNA[train_ind, ]
+test <- compensationsWithNA[-train_ind, ]
+
+# Check if the train and test sets are fine
+prop.table(table(train$High.Cost))
+prop.table(table(test$High.Cost))
+# It looks fine
+```
+### Modelling
+```{r modellingLib, results="hide", message=FALSE, warning=FALSE}
+library(plyr)
+library(rpart.plot)
+library(e1071)
+library(caret)
+library(randomForest)
+```
+
+```{r modelling}
+# Let's create a model now
+# 1. Decision based tree
+
+fit <- rpart(train$High.Cost~., data = train, method = "class")
+# rpart.plot(fit, extra = 3)
+PRE_TDT=predict(fit,data=train,type="class")
+confusionMatrix(PRE_TDT,as.factor(train$High.Cost))
+
+# Accuracy is 99.26 percent
+
+# model fit
+# note that you must turn the ordinal variables into factor or R wont use
+# them properly
+model <- randomForest(y=train$High.Cost,x=cbind(as.factor(train$Loss.Type),as.factor(train$Litigation),as.factor(train$Sector.Industry)),ntree=100)
+
+#plot of model accuracy by class
+plot(model)
+
+# Other models can also be created# 
+# Radial Support vector Machine
+# lasso-ridge regression
+# Linear Support vector Machine
+# Logistic Regression
+
+# It looks like the key drivers from the analysis as of now are sectory/industry, litigation and loss type.
+# Moreover the DOB can also contribute by calculating the age of the worker.
+# Claim cost is removed because it is certain that if the claim cost is > 20k then automatically high cost is true.
+# Another analysis could be by calculating the claim cost and then further see if the cost is >20k or <20k
+# Area wise analysis can also be done.
+
+# As the accident state has postal codes of US, I checked for the list of US postal codes
+USStateCodes <- read.csv("US State Codes.csv")
+head(USStateCodes)
+```
+
+Now let's start with **Objective 2**. Here we have to Prove that litigation is the key driver of high cost claims using statistical analysis and tests. Predict if the case will go for litigation. Hence drive the objective 1.
+
+```{r objective2Lib, results="hide", message=FALSE, warning=FALSE}
+
+library(plotROC)
+library(InformationValue)
+library(ROCR)
+library(ggpubr)
+```
+
+```{r objective2}
+# OBJECTIVE 2
+# ------------
+# Null Hypothesis - If Litigation is YES, High Cost is 1
+# Let's start by taking the new data and removing all the missing Litigations
+
+objective2 <- read.csv(wb2, na.strings = c("","NA"))
+objective2_bkp <- read.csv(wb2, na.strings = c("","NA"))
+objective2 <- objective2[,c('Litigation','High.Cost')]
+
+unique(objective2$Litigation)
+# The values in variable Litigatation are No, NO, Yes, YES
+objective2$Litigation <- toupper(objective2$Litigation)
+
+gg <- ggplot(data=objective2) +
+  geom_bar(mapping =aes(x=objective2$Litigation, fill=objective2$High.Cost),
+           position = "dodge")
+ggplotly(gg)
+
+# Remove all the null rows from dataset
+objective2 <- na.omit(objective2)
+
+# Replace YES With 1 and NO with 0
+objective2 <- objective2 %>%
+  mutate(Litigation = ifelse(Litigation == "NO",0,1))
+head(objective2)
+
+cor.test(objective2$Litigation, objective2$High.Cost, method=c("pearson", "kendall", "spearman"))
+
+ggscatter(objective2, x = "Litigation", y = "High.Cost", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "pearson",
+          xlab = "Litigation", ylab = "High Cost")
+# The correlation between the variables comes out to be 0.49 which doesn't necessarily show that the variables are highly correlated
+
+# Find the chi-squared value and p value to check the hypothesis
+tbl <- as.matrix(table(objective2$Litigation,objective2$High.Cost))
+
+chi2 = chisq.test(tbl, correct=F)
+c(chi2$statistic, chi2$p.value)
+# here the p-value comes to be very small which makes it more prominent to reject the hypothesis
+sqrt(chi2$statistic / sum(tbl))
+# It again shows that the correlation is 0.49
+
+# Let's try now creating the logistic regression model as we have to see the binary value.
+# We will start again by creating training and testing data sets
+# sample the data for modelling
+# 75% of the sample size
+smp_size2 <- floor(0.75 * nrow(objective2))
+
+# set the seed to make your partition reproducible
+set.seed(123)
+train_ind2 <- sample(seq_len(nrow(objective2)), size = smp_size2)
+
+train2 <- objective2[train_ind2, ]
+test2 <- objective2[-train_ind2, ]
+
+# Check if the train and test sets are fine
+prop.table(table(train2$High.Cost))
+prop.table(table(test2$High.Cost))
+# It looks fine
+
+# Create logistic model
+# Step 1: Build Logit Model on Training Dataset
+model2 <- glm (test2$High.Cost ~ ., data = test2, family = binomial)
+summary(model)
+
+# Step 2: Predict Y on Test Dataset
+predict <- predict(model2, type = 'response')
+
+#confusion matrix
+table(test2$High.Cost, predict > 0.5)
+
+# ROCR Curve
+ROCRpred <- prediction(predict, test2$High.Cost)
+ROCRperf <- performance(ROCRpred, 'tpr','fpr')
+plot(ROCRperf, colorize = TRUE)
+Concordance(test2$High.Cost, predict)
+# The concordance also comes out to be 0.37 which also proves that the null hypothesis is incorrect
+
+plotROC(test2$High.Cost, predict)
+# Area under ROC curve is also less which gain proves that null hypothesis is incorrect
+
+# Hence the conclusion is that the null hypothesis that Litigation is the key factor in high cost claims
+# surprisingly is proven wrong.
+```
+
+
+Now let's start with **Objective 3**. Here we have to Prove that litigation is the key driver of high cost claims using statistical analysis and tests. Predict if the case will go for litigation. Hence drive the objective 1.
+
+```{r objective3Lib, results="hide", message=FALSE, warning=FALSE}
+
+library(tm)
+library(SnowballC)
+library(wordcloud)
+library(RColorBrewer)
+library(plyr)
+library(installr)
+library(RSentiment)
+```
+
+```{r objective3, warning=FALSE}
+# OBJECTIVE 3
+# ------------
+# Now we have to feature new variables using the description.
+# We will start by creating the term document matrix and then creating the word cloud to see
+# what is the frequency of terms
+objective3 <- read.csv(wb2,header = T, na.strings = c("","NA"))
+objective3_bkp <- objective3
+head(objective3[,'Cause.Description'])
+table(is.na(objective3[,'Cause.Description']))
+
+# There are 946 NA's in Cause description. We will remove all those rows as in this objective
+# we are only concerned with cause description
+objective3 <- objective3[,c('Cause.Description','High.Cost')]
+
+# Remove all the null rows from dataset
+objective3 <- na.omit(objective3)
+head(objective3)
+
+data <- objective3[,'Cause.Description']
+
+# Load the data as a corpus
+docs <- Corpus(VectorSource(data))
+inspect(docs[1:20])
+
+# Transformation is performed using tm_map() function to replace, for example, special characters from the text.
+# Replacing "/", "@" and "|" with space:
+
+toSpace <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+docs <- tm_map(docs, toSpace, "/")
+docs <- tm_map(docs, toSpace, "@")
+docs <- tm_map(docs, toSpace, "\\|")
+
+# Convert the text to lower case
+docs <- tm_map(docs, content_transformer(tolower))
+# Remove numbers
+docs <- tm_map(docs, removeNumbers)
+# Remove english common stopwords
+docs <- tm_map(docs, removeWords, stopwords("english"))
+# Remove punctuations
+docs <- tm_map(docs, removePunctuation)
+# Eliminate extra white spaces
+docs <- tm_map(docs, stripWhitespace)
+
+inspect(docs[1:20])
+
+# Build a term-document matrix
+# I have divided it into 2 parts because of space issues
+dtm1 <- TermDocumentMatrix(docs[1:28402])
+
+m1 <- as.matrix(dtm1)
+v1 <- sort(rowSums(m1),decreasing=TRUE)
+d1 <- data.frame(word = names(v1),freq=v1)
+head(d1, 10)
+
+dtm2 <- TermDocumentMatrix(docs[28403:38403])
+
+m2 <- as.matrix(dtm2)
+v2 <- sort(rowSums(m2),decreasing=TRUE)
+d2 <- data.frame(word = names(v2),freq=v2)
+head(d2, 10)
+
+dtm3 <- TermDocumentMatrix(docs[38404:48404])
+
+m3 <- as.matrix(dtm3)
+v3 <- sort(rowSums(m3),decreasing=TRUE)
+d3 <- data.frame(word = names(v3),freq=v3)
+head(d3, 10)
+
+dtm4 <- TermDocumentMatrix(docs[48405:56803])
+
+m4 <- as.matrix(dtm4)
+v4 <- sort(rowSums(m4),decreasing=TRUE)
+d4 <- data.frame(word = names(v4),freq=v4)
+head(d4, 10)
+
+d1$rn <- rownames(d1)
+d2$rn <- rownames(d2)
+d3$rn <- rownames(d3)
+d4$rn <- rownames(d4)
+
+# bind the two dataframes together by row and aggregate
+res <- aggregate(cbind(freq) ~ rn, rbind(d1,d2,d3,d4), sum)
+
+# assign the rownames again
+rownames(res) <- res$rn
+
+set.seed(1234)
+wordcloud(words = res$rn, freq = res$freq, min.freq = 10,
+          max.words=200, random.order=FALSE, rot.per=0.35, 
+          colors=brewer.pal(8, "Dark2"))
+# I have merged all the four data frames adding the frequency of the words and created 1 word cloud.
+# Alternatively we can also do the analysis on the basis of 4 separated word clouds.
+
+set.seed(1234)
+wordcloud(words = d4$word, freq = d4$freq, min.freq = 1,
+          max.words=200, random.order=FALSE, rot.per=0.35,
+          colors=brewer.pal(8, "Dark2"))
+
+set.seed(1234)
+wordcloud(words = d1$word, freq = d1$freq, min.freq = 1,
+          max.words=200, random.order=FALSE, rot.per=0.35,
+          colors=brewer.pal(8, "Dark2"))
+
+set.seed(1234)
+wordcloud(words = d2$word, freq = d2$freq, min.freq = 1,
+          max.words=200, random.order=FALSE, rot.per=0.35,
+          colors=brewer.pal(8, "Dark2"))
+
+set.seed(1234)
+wordcloud(words = d3$word, freq = d3$freq, min.freq = 1,
+          max.words=200, random.order=FALSE, rot.per=0.35,
+          colors=brewer.pal(8, "Dark2"))
+
+
+findFreqTerms(dtm1, lowfreq = 40)
+# We can also find association of terms on the basis of correlation
+findAssocs(dtm1, terms = "pain", corlimit = 0.3)
+
+# One analysis that we can do here is that, on the basis of which body part the case goes to litigtion
+# For now I will just create some new variables
+objective3$hasStrain <- str_detect(objective3$Cause.Description,pattern = "strain|Strain|STRAIN")
+objective3$hasPain <- str_detect(objective3$Cause.Description,pattern = "pain|Pain|PAIN")
+objective3$hasShoulderInjury <- str_detect(objective3$Cause.Description,pattern = "(shoulder|Shoulder|SHOULDER)&(injured|Injured|INJURED|Injury|injury|INJURY)")
+objective3$hasKneeProblem <- str_detect(objective3$Cause.Description,pattern = "knee|Knee|KNEE")
+objective3$hasWristProblem <- str_detect(objective3$Cause.Description,pattern = "wrist|Wrist|WRIST")
+objective3$hasSprain <- str_detect(objective3$Cause.Description,pattern = "sprain|Sprain|SPRAIN")
+objective3$hasSlipped <- str_detect(objective3$Cause.Description,pattern = "slipped|Slipped|SLIPPED|slip|Slip|SLIP")
+
+head(objective3)
+# More fields can be created by checking the associations and correlations of words
+```
