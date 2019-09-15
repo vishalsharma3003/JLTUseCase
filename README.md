@@ -14,16 +14,19 @@ Risk manager from his primary analysis has identified that if a case has enterd 
 ### Objective 2
 Prove that litigation is the key driver of high cost claims using statistical analysis and tests. Predict if the case will go for litigation. Hence drive the objective 1.
 
-#### Objective 3
-Use NLP techniques to engineer features from description (stated in hint below)
+### Objective 3
+Use NLP techniques to engineer features from description (stated in hint below).
 
 #### Hint
 Engineer features from description such as cause of injury, body parts damaged and any which helps predict the  Litigation cases/high cost claims. Also you are free to engineer new features with relevant logic behind them
 
 ### Domain Knowledge
 **Carrier:**	Insurance Carrier
+
 **Loss Type:**	Type of Claim
+
 **Litigation:**	Attorney or legal involvement
+
 **High Cost	Claim:** Cost above $20,000 marked as high cost
 	
 	
